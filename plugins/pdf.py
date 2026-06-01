@@ -2,11 +2,71 @@
 
 import html
 import re
+import sys
 from pathlib import Path
 
 from utils.files import sanitize_filename
 
 from .base import Plugin
+
+
+def _patch_macos_homebrew_dylib_loading():
+    """Prefer real Homebrew .dylib paths for libraries loaded by WeasyPrint."""
+    if sys.platform != "darwin":
+        return
+
+    import cffi
+
+    original_dlopen = cffi.FFI.dlopen
+    if getattr(original_dlopen, "_oreilly_homebrew_dylib_patch", False):
+        return
+
+    brew_lib_dirs = (Path("/opt/homebrew/lib"), Path("/usr/local/lib"))
+    aliases = {
+        "libpango-1.0-0": ("libpango-1.0.dylib", "libpango-1.0.0.dylib"),
+        "pango-1.0-0": ("libpango-1.0.dylib", "libpango-1.0.0.dylib"),
+        "pango-1.0": ("libpango-1.0.dylib", "libpango-1.0.0.dylib"),
+        "libpangoft2-1.0-0": (
+            "libpangoft2-1.0.dylib",
+            "libpangoft2-1.0.0.dylib",
+        ),
+        "pangoft2-1.0-0": (
+            "libpangoft2-1.0.dylib",
+            "libpangoft2-1.0.0.dylib",
+        ),
+        "pangoft2-1.0": (
+            "libpangoft2-1.0.dylib",
+            "libpangoft2-1.0.0.dylib",
+        ),
+        "libgobject-2.0-0": ("libgobject-2.0.dylib", "libgobject-2.0.0.dylib"),
+        "gobject-2.0-0": ("libgobject-2.0.dylib", "libgobject-2.0.0.dylib"),
+        "gobject-2.0": ("libgobject-2.0.dylib", "libgobject-2.0.0.dylib"),
+        "libharfbuzz-0": ("libharfbuzz.dylib", "libharfbuzz.0.dylib"),
+        "harfbuzz-0.0": ("libharfbuzz.dylib", "libharfbuzz.0.dylib"),
+        "libharfbuzz-subset-0": (
+            "libharfbuzz-subset.dylib",
+            "libharfbuzz-subset.0.dylib",
+        ),
+        "harfbuzz-subset-0.0": (
+            "libharfbuzz-subset.dylib",
+            "libharfbuzz-subset.0.dylib",
+        ),
+        "libfontconfig-1": ("libfontconfig.dylib", "libfontconfig.1.dylib"),
+        "fontconfig-1": ("libfontconfig.dylib", "libfontconfig.1.dylib"),
+    }
+
+    def dlopen(self, name, flags=0):
+        if isinstance(name, str) and name in aliases:
+            for lib_dir in brew_lib_dirs:
+                for filename in aliases[name]:
+                    dylib_path = lib_dir / filename
+                    if dylib_path.exists():
+                        return original_dlopen(self, str(dylib_path), flags)
+
+        return original_dlopen(self, name, flags)
+
+    dlopen._oreilly_homebrew_dylib_patch = True
+    cffi.FFI.dlopen = dlopen
 
 
 class PdfPlugin(Plugin):
@@ -20,6 +80,7 @@ class PdfPlugin(Plugin):
         """Lazy import WeasyPrint to avoid import errors if not installed."""
         if self._weasyprint is None:
             try:
+                _patch_macos_homebrew_dylib_loading()
                 import weasyprint
                 self._weasyprint = weasyprint
             except ImportError as e:
