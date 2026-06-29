@@ -657,12 +657,6 @@ function collapseBook() {
 
         expanded.classList.add('hidden');
 
-        // Reset sections
-        const progressSection = currentExpandedCard.querySelector('.progress-section');
-        const resultSection = currentExpandedCard.querySelector('.result-section');
-        progressSection.classList.add('hidden');
-        resultSection.classList.add('hidden');
-
         document.getElementById('search-results').classList.remove('has-expanded');
         currentExpandedCard = null;
     }
@@ -905,6 +899,10 @@ async function pollProgress(cardElement) {
             restoreButtons();
             progressStatus.textContent = `Error: ${data.error}`;
         } else {
+            progressSection.classList.remove('hidden');
+            resultSection.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+            cancelBtn.classList.remove('hidden');
             setTimeout(() => pollProgress(cardElement), 500);
         }
     } catch (err) {
